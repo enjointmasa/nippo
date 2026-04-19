@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>日報入力 - 相談支援事業所エンジョイント</title>
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue: #0078d4;
+      --blue-dark: #005a9e;
+      --green: #107c10;
+      --red: #a4262c;
+      --bg: #f3f2f1;
+      --card: #ffffff;
+      --border: #edebe9;
+      --text: #323130;
+      --muted: #605e5c;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans",
+                   "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100dvh;
+    }
+
+    header {
+      background: var(--blue);
+      color: #fff;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,.2);
+    }
+    header h1 { font-size: 1rem; font-weight: 600; }
+    #user-badge {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-size: .78rem;
+    }
+    #user-badge span { opacity: .9; }
+    .btn-sm {
+      padding: 4px 10px;
+      border: 1px solid rgba(255,255,255,.6);
+      border-radius: 4px;
+      background: transparent;
+      color: #fff;
+      font-size: .78rem;
+      cursor: pointer;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+    .container { max-width: 640px; margin: 0 auto; padding: 16px; }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .section-label {
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-label {
+      display: block;
+      font-size: .87rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .required { color: var(--red); margin-left: 3px; }
+
+    input[type="text"],
+    input[type="date"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid #c8c6c4;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-family: inherit;
+      color: var(--text);
+      background: #fff;
+      transition: border-color .15s, box-shadow .15s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(0,120,212,.15);
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    /* ラジオグループ（成人・児童） */
+    .radio-group {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .radio-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: 1.5px solid #c8c6c4;
+      border-radius: 6px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 120px;
+    }
+    .radio-wrap input[type="radio"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--blue);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .radio-wrap span { font-size: .95rem; user-select: none; }
+    .radio-wrap:has(input:checked) {
+      border-color: var(--blue);
+      background: #f0f6fc;
+    }
+
+    /* チェックボックスリスト */
+    .check-list { display: flex; flex-direction: column; }
+    .check-wrap { border-bottom: 1px solid var(--border); }
+    .check-wrap:last-child { border-bottom: none; }
+
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 13px 0;
+      cursor: pointer;
+    }
+    .check-row input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      margin-top: 2px;
+      flex-shrink: 0;
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+    .check-row .check-label {
+      font-size: .95rem;
+      line-height: 1.5;
+      user-select: none;
+    }
+
+    /* 条件表示エリア */
+    .cond {
+      display: none;
+      margin: 0 0 12px 30px;
+      padding: 14px 16px;
+      background: #f0f6fc;
+      border-left: 3px solid var(--blue);
+      border-radius: 0 6px 6px 0;
+    }
+    .cond.on { display: block; }
+
+    /* 条件内のラジオ */
+    .cond-radio-list { display: flex; flex-direction: column; gap: 0; }
+    .cond-radio-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 9px 0;
+      cursor: pointer;
+      border-bottom: 1px solid #d0e4f5;
+    }
+    .cond-radio-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .cond-radio-row:first-child { padding-top: 0; }
+    .cond-radio-row input[type="radio"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      flex-shrink: 0;
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+    .cond-radio-row span {
+      font-size: .9rem;
+      line-height: 1.5;
+      user-select: none;
+      color: #1a4f7a;
+    }
+
+    /* 条件内テキストエリア */
+    .cond textarea {
+      background: #fff;
+      font-size: .93rem;
+    }
+
+    /* ボタン */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 13px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: .97rem;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background .15s, transform .08s;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-dark); }
+    .btn-success { background: var(--green); color: #fff; }
+    .btn-success:hover { background: #0b5c0b; }
+    .btn-outline {
+      background: transparent;
+      color: var(--blue);
+      border: 1.5px solid var(--blue);
+    }
+    .btn-outline:hover { background: rgba(0,120,212,.06); }
+    .btn-row { display: flex; gap: 10px; flex-direction: column; }
+    @media(min-width: 440px) { .btn-row { flex-direction: row; } .btn-row .btn { flex: 1; } }
+
+    .alert {
+      padding: 12px 14px;
+      border-radius: 6px;
+      font-size: .9rem;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .alert-error { background: #fde7e9; color: #a4262c; border: 1px solid #f1bbbd; }
+
+    .loading-wrap {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid #edebe9;
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .login-hero {
+      text-align: center;
+      padding: 50px 20px 40px;
+    }
+    .login-icon { font-size: 3rem; margin-bottom: 16px; }
+    .login-hero h2 { font-size: 1.3rem; margin-bottom: 8px; }
+    .login-hero p { color: var(--muted); font-size: .92rem; margin-bottom: 28px; line-height: 1.7; }
+    .btn-login { max-width: 280px; margin: 0 auto; }
+
+    .success-hero { text-align: center; padding: 30px 10px; }
+    .success-icon { font-size: 3rem; margin-bottom: 14px; }
+    .success-hero h2 { color: var(--green); margin-bottom: 8px; }
+    .success-hero p { color: var(--muted); margin-bottom: 24px; font-size: .93rem; }
+    .record-chip {
+      display: inline-block;
+      background: #dff6dd;
+      color: var(--green);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: .85rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📋 相談支援 日報入力</h1>
+  <div id="user-badge">
+    <span id="badge-name"></span>
+    <button class="btn-sm" onclick="logout()">ログアウト</button>
+  </div>
+</header>
+
+<!-- ログインページ -->
+<div id="page-login" class="page active">
+  <div class="container">
+    <div class="card">
+      <div class="login-hero">
+        <div class="login-icon">🏢</div>
+        <h2>相談支援事業所エンジョイント</h2>
+        <p>Microsoftアカウントでログインして<br>日報を入力してください</p>
+        <button class="btn btn-primary btn-login" onclick="login()">
+          Microsoftアカウントでログイン
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 入力フォームページ -->
+<div id="page-form" class="page">
+  <div class="container">
+
+    <div class="alert alert-error" id="form-error"></div>
+
+    <!-- 基本情報 -->
+    <div class="card">
+      <div class="section-label">基本情報</div>
+
+      <div class="field">
+        <label class="field-label" for="f-counselor">相談員名<span class="required">*</span></label>
+        <input type="text" id="f-counselor" placeholder="例：田中 太郎">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-date">実施日<span class="required">*</span></label>
+        <input type="date" id="f-date">
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="f-client">利用者名<span class="required">*</span></label>
+        <input type="text" id="f-client" placeholder="例：山田 花子">
+      </div>
+
+      <div class="field">
+        <label class="field-label">成人または児童<span class="required">*</span></label>
+        <div class="radio-group">
+          <label class="radio-wrap">
+            <input type="radio" name="adult-child" value="成人">
+            <span>成人</span>
+          </label>
+          <label class="radio-wrap">
+            <input type="radio" name="adult-child" value="児童">
+            <span>児童</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 計画作成・変更・更新・モニタリング -->
+    <div class="card">
+      <div class="section-label">計画作成・変更・更新・モニタリング</div>
+      <div class="check-list">
+
+        <!-- 1. 新規計画作成 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-newplan" onchange="toggleCond('cond-newplan', this)">
+            <span class="check-label">新規でサービス等利用計画を作成した</span>
+          </label>
+          <div class="cond" id="cond-newplan">
+            <div class="cond-radio-list">
+              <label class="cond-radio-row">
+                <input type="radio" name="newplan-sub" value="初めて福祉サービスを利用する人または6ヶ月以上サービスを利用していない人">
+                <span>初めて福祉サービスを利用する人または6ヶ月以上サービスを利用していない人</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="newplan-sub" value="上記以外の人">
+                <span>上記以外の人</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 変更・更新 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-update">
+            <span class="check-label">サービス等利用計画の変更・更新をした</span>
+          </label>
+        </div>
+
+        <!-- 3. モニタリング -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-monitoring" onchange="toggleCond('cond-monitoring', this)">
+            <span class="check-label">モニタリングをした</span>
+          </label>
+          <div class="cond" id="cond-monitoring">
+            <div class="cond-radio-list">
+              <label class="cond-radio-row">
+                <input type="radio" name="monitoring-sub" value="モニタリング時に担当者会議も行った">
+                <span>モニタリング時に担当者会議も行った</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="monitoring-sub" value="モニタリングのみ行った">
+                <span>モニタリングのみ行った</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- そのほかの相談支援 -->
+    <div class="card">
+      <div class="section-label">そのほかの相談支援 ※zoomや電話での対応も含めてOK, 必ず記録に残す</div>
+      <div class="check-list">
+
+        <!-- 1. 相談支援 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-contact" onchange="toggleCond('cond-contact', this)">
+            <span class="check-label">計画作成やモニタリング月以外で、相談支援を行なった</span>
+          </label>
+          <div class="cond" id="cond-contact">
+            <div class="cond-radio-list">
+              <label class="cond-radio-row">
+                <input type="radio" name="contact-sub" value="利用者や家族と面談">
+                <span>利用者や家族と面談</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="contact-sub" value="サービス担当者会議の開催">
+                <span>サービス担当者会議の開催</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="contact-sub" value="関係機関が開催する会議への参加">
+                <span>関係機関が開催する会議への参加</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="contact-sub" value="通院同行し、心身の状態の情報提供を実施">
+                <span>通院同行し、心身の状態の情報提供を実施</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="contact-sub" value="福祉サービス事業者等と利用者に関する情報の提供・共有">
+                <span>福祉サービス事業者等と利用者に関する情報の提供・共有</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 様子確認 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-status" onchange="toggleCond('cond-status', this)">
+            <span class="check-label">福祉サービス事業所に行き本人の様子を確認した</span>
+          </label>
+          <div class="cond" id="cond-status">
+            <textarea id="f-status-note" placeholder="確認したことや本人の事業所での様子を簡潔に記述"></textarea>
+          </div>
+        </div>
+
+        <!-- 3. 退院・退所支援 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-discharge">
+            <span class="check-label">病院を退院または施設（障害者支援施設や刑務所等）退所にあたり、関係機関と情報共有や会議を行なった</span>
+          </label>
+        </div>
+
+        <!-- 4. 関係機関連携 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-agency" onchange="toggleCond('cond-agency', this)">
+            <span class="check-label">病院・訪看・企業・保育所・学校と連携を取った</span>
+          </label>
+          <div class="cond" id="cond-agency">
+            <div class="cond-radio-list">
+              <label class="cond-radio-row">
+                <input type="radio" name="agency-sub" value="関係機関を訪問し、職員と面談または会議を行った">
+                <span>関係機関を訪問し、職員と面談または会議を行った</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="agency-sub" value="病院に通院同行を行い、情報提供を行った">
+                <span>病院に通院同行を行い、情報提供を行った</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="agency-sub" value="電話やメール、LINE等の方法で関係機関と情報提供を行った">
+                <span>電話やメール、LINE等の方法で関係機関と情報提供を行った</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. 入院支援 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-hospital" onchange="toggleCond('cond-hospital', this)">
+            <span class="check-label">入院に伴う支援をした</span>
+          </label>
+          <div class="cond" id="cond-hospital">
+            <div class="cond-radio-list">
+              <label class="cond-radio-row">
+                <input type="radio" name="hospital-sub" value="病院を訪問して情報提供した">
+                <span>病院を訪問して情報提供した</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="hospital-sub" value="電話やメール、LINE等で情報提供した">
+                <span>電話やメール、LINE等で情報提供した</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. 介護保険連携 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-care" onchange="toggleCond('cond-care', this)">
+            <span class="check-label">介護保険の利用に伴い、ケアマネージャー等と連携した</span>
+          </label>
+          <div class="cond" id="cond-care">
+            <div class="cond-radio-list">
+              <label class="cond-radio-row">
+                <input type="radio" name="care-sub" value="ケアマネージャー等に対して、文書による情報提供をした">
+                <span>ケアマネージャー等に対して、文書による情報提供をした</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="care-sub" value="支援の検討等を行う会議に参加した">
+                <span>支援の検討等を行う会議に参加した</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. 就職支援 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-employment" onchange="toggleCond('cond-employment', this)">
+            <span class="check-label">就職するに伴い、雇用先やナカポツ（障害者就業・生活支援センター）と連携した</span>
+          </label>
+          <div class="cond" id="cond-employment">
+            <div class="cond-radio-list">
+              <label class="cond-radio-row">
+                <input type="radio" name="employment-sub" value="雇用先等に対して、文書による情報提供をした">
+                <span>雇用先等に対して、文書による情報提供をした</span>
+              </label>
+              <label class="cond-radio-row">
+                <input type="radio" name="employment-sub" value="支援の検討等を行う会議に参加した">
+                <span>支援の検討等を行う会議に参加した</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 備考 -->
+    <div class="card">
+      <div class="section-label">備考</div>
+      <div class="field">
+        <textarea id="f-remarks" placeholder="特記事項があれば入力してください"></textarea>
+      </div>
+    </div>
+
+    <div class="loading-wrap" id="loading">
+      <div class="spinner"></div>
+      <p>送信中です…</p>
+    </div>
+
+    <div class="card">
+      <button class="btn btn-primary" onclick="submitForm()">日報を送信</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- 完了ページ -->
+<div id="page-success" class="page">
+  <div class="container">
+    <div class="card">
+      <div class="success-hero">
+        <div class="success-icon">✅</div>
+        <h2>送信完了</h2>
+        <div class="record-chip" id="success-record-id"></div>
+        <p>日報を登録しました。</p>
+        <div class="btn-row">
+          <button class="btn btn-success" onclick="continueInput()">次の利用者を入力</button>
+          <button class="btn btn-outline" onclick="newInput()">最初から入力</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const TENANT_ID  = 'f0796f06-778d-4183-b5d9-4cce701de452';
+const CLIENT_ID  = '405cc58b-abd1-44da-a6b8-6d26d044164e';
+const FOLDER     = '相談支援事業所エンジョイント';
+const FILE_NAME  = '★利用者管理シート_相談支援_v3.xlsx';
+
+const msalConfig = {
+  auth: {
+    clientId: CLIENT_ID,
+    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
+    redirectUri: 'https://enjointmasa.github.io/nippo/'
+  },
+  cache: { cacheLocation: 'sessionStorage' }
+};
+
+const scopes = ['Files.ReadWrite', 'User.Read'];
+const msal_ = new msal.PublicClientApplication(msalConfig);
+
+msal_.handleRedirectPromise()
+  .then(res => {
+    if (res) msal_.setActiveAccount(res.account);
+    const acc = msal_.getActiveAccount() || msal_.getAllAccounts()[0];
+    if (acc) { msal_.setActiveAccount(acc); onLoggedIn(acc); }
+  })
+  .catch(e => showFormError(e.message));
+
+function login()  { msal_.loginRedirect({ scopes }); }
+function logout() { msal_.logoutRedirect(); }
+
+function onLoggedIn(account) {
+  document.getElementById('badge-name').textContent = account.name || account.username;
+  document.getElementById('user-badge').style.display = 'flex';
+  showPage('page-form');
+  if (!document.getElementById('f-date').value) {
+    document.getElementById('f-date').value = todayStr();
+  }
+}
+
+async function getToken() {
+  const account = msal_.getActiveAccount();
+  if (!account) throw new Error('ログインが必要です');
+  try {
+    const r = await msal_.acquireTokenSilent({ scopes, account });
+    return r.accessToken;
+  } catch {
+    const r = await msal_.acquireTokenPopup({ scopes });
+    return r.accessToken;
+  }
+}
+
+function toggleCond(condId, cb) {
+  const el = document.getElementById(condId);
+  if (!el) return;
+  if (cb.checked) {
+    el.classList.add('on');
+  } else {
+    el.classList.remove('on');
+    el.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+    el.querySelectorAll('textarea').forEach(t => t.value = '');
+  }
+}
+
+async function submitForm() {
+  hideFormError();
+
+  const counselor = v('f-counselor');
+  const date      = v('f-date');
+  const client    = v('f-client');
+  const adultChild = document.querySelector('input[name="adult-child"]:checked')?.value || '';
+
+  if (!counselor)  { showFormError('相談員名を入力してください'); return; }
+  if (!date)       { showFormError('実施日を選択してください');   return; }
+  if (!client)     { showFormError('利用者名を入力してください'); return; }
+  if (!adultChild) { showFormError('成人または児童を選択してください'); return; }
+
+  // 各項目の値取得
+  const newplanChecked   = document.getElementById('chk-newplan').checked;
+  const newplanSub       = newplanChecked ? (document.querySelector('input[name="newplan-sub"]:checked')?.value || '') : '';
+  const updateChecked    = document.getElementById('chk-update').checked ? 'あり' : '';
+  const monitoringChecked = document.getElementById('chk-monitoring').checked;
+  const monitoringSub    = monitoringChecked ? (document.querySelector('input[name="monitoring-sub"]:checked')?.value || '') : '';
+  const contactChecked   = document.getElementById('chk-contact').checked;
+  const contactSub       = contactChecked ? (document.querySelector('input[name="contact-sub"]:checked')?.value || '') : '';
+  const statusChecked    = document.getElementById('chk-status').checked;
+  const statusNote       = statusChecked ? v('f-status-note') : '';
+  const dischargeChecked = document.getElementById('chk-discharge').checked ? 'あり' : '';
+  const agencyChecked    = document.getElementById('chk-agency').checked;
+  const agencySub        = agencyChecked ? (document.querySelector('input[name="agency-sub"]:checked')?.value || '') : '';
+  const hospitalChecked  = document.getElementById('chk-hospital').checked;
+  const hospitalSub      = hospitalChecked ? (document.querySelector('input[name="hospital-sub"]:checked')?.value || '') : '';
+  const careChecked      = document.getElementById('chk-care').checked;
+  const careSub          = careChecked ? (document.querySelector('input[name="care-sub"]:checked')?.value || '') : '';
+  const employmentChecked = document.getElementById('chk-employment').checked;
+  const employmentSub    = employmentChecked ? (document.querySelector('input[name="employment-sub"]:checked')?.value || '') : '';
+  const remarks          = v('f-remarks');
+
+  // いずれかの支援内容が選択されているか確認
+  const anyChecked = newplanChecked || updateChecked || monitoringChecked ||
+                     contactChecked || statusChecked || dischargeChecked ||
+                     agencyChecked || hospitalChecked || careChecked || employmentChecked;
+  if (!anyChecked) {
+    showFormError('支援内容を1つ以上選択してください'); return;
+  }
+
+  setLoading(true);
+
+  try {
+    const token = await getToken();
+    const { nextRow, recordId } = await getNextRowAndId(token);
+
+    const now = new Date();
+    const registeredAt = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+    const values = [[
+      recordId,
+      counselor,
+      date,
+      client,
+      adultChild,
+      newplanSub,
+      updateChecked,
+      monitoringSub,
+      contactSub,
+      statusNote,
+      dischargeChecked,
+      agencySub,
+      hospitalSub,
+      careSub,
+      employmentSub,
+      remarks,
+      registeredAt
+    ]];
+
+    await addRow(token, values, nextRow);
+    setLoading(false);
+
+    window._lastCounselor = counselor;
+    window._lastDate      = date;
+    document.getElementById('success-record-id').textContent = `記録ID: ${recordId}`;
+    showPage('page-success');
+
+  } catch (err) {
+    setLoading(false);
+    showFormError(err.message || '送信に失敗しました。もう一度お試しください。');
+  }
+}
+
+const SHEET_NAME = '日報';
+
+function workbookUrl(suffix) {
+  const p1 = encodeURIComponent(FOLDER);
+  const p2 = encodeURIComponent(FILE_NAME);
+  return `https://graph.microsoft.com/v1.0/me/drive/root:/${p1}/${p2}:/workbook${suffix}`;
+}
+
+async function getNextRowAndId(token) {
+  // 使用中のセル範囲を取得して次の空行を探す
+  const sheetEnc = encodeURIComponent(SHEET_NAME);
+  try {
+    const res = await gFetch(token, workbookUrl(`/worksheets/${sheetEnc}/usedRange`), 'GET');
+    const rowCount = res.rowCount || 1;
+    const vals = res.values || [];
+    // 最大記録IDを取得（1行目はヘッダーなのでスキップ）
+    let maxId = 0;
+    for (let i = 1; i < vals.length; i++) {
+      const id = parseInt(vals[i][0], 10);
+      if (!isNaN(id) && id > maxId) maxId = id;
+    }
+    return { nextRow: rowCount + 1, recordId: maxId + 1 };
+  } catch {
+    // シートが空の場合は2行目から（1行目はヘッダー）
+    return { nextRow: 2, recordId: 1 };
+  }
+}
+
+async function addRow(token, values, nextRow) {
+  const sheetEnc = encodeURIComponent(SHEET_NAME);
+  const cols = values[0].length;
+  // 列番号をA〜Qに変換（最大17列）
+  const endCol = String.fromCharCode(64 + cols);
+  const address = `A${nextRow}:${endCol}${nextRow}`;
+  await gFetch(token, workbookUrl(`/worksheets/${sheetEnc}/range(address='${address}')`), 'PATCH', { values });
+}
+
+async function gFetch(token, url, method, body) {
+  const opts = {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    let msg = `APIエラー (${res.status})`;
+    try { const e = await res.json(); msg = e?.error?.message || msg; } catch {}
+    throw new Error(msg);
+  }
+  if (res.status === 204) return {};
+  return res.json();
+}
+
+function continueInput() {
+  const counselor = window._lastCounselor || '';
+  const date      = window._lastDate      || '';
+  resetForm();
+  document.getElementById('f-counselor').value = counselor;
+  document.getElementById('f-date').value      = date;
+  showPage('page-form');
+  document.getElementById('f-client').focus();
+}
+
+function newInput() {
+  resetForm();
+  document.getElementById('f-date').value = todayStr();
+  showPage('page-form');
+  document.getElementById('f-counselor').focus();
+}
+
+function resetForm() {
+  document.getElementById('f-counselor').value = '';
+  document.getElementById('f-date').value = '';
+  document.getElementById('f-client').value = '';
+  document.getElementById('f-remarks').value = '';
+  document.getElementById('f-status-note').value = '';
+  document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  document.querySelectorAll('.cond').forEach(el => el.classList.remove('on'));
+  hideFormError();
+}
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function showFormError(msg) {
+  const el = document.getElementById('form-error');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function hideFormError() {
+  document.getElementById('form-error').style.display = 'none';
+}
+function setLoading(on) {
+  document.getElementById('loading').style.display = on ? 'block' : 'none';
+}
+function v(id) {
+  return (document.getElementById(id)?.value || '').trim();
+}
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+function pad(n) {
+  return String(n).padStart(2, '0');
+}
+</script>
+</body>
+</html>
