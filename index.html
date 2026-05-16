@@ -703,14 +703,33 @@ async function apiCall(token, url, method, body, sessionId) {
   return res.json();
 }
 
-// ファイルのドライブアイテムIDを取得（★などの特殊文字に対応）
+// ファイルのドライブアイテムIDを取得（パス→検索の順でフォールバック）
 async function getFileItemId(token) {
-  const p1 = encodeURIComponent(FOLDER);
-  const p2 = encodeURIComponent(FILE_NAME);
-  const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${p1}/${p2}`;
-  const res = await apiCall(token, url, 'GET');
-  if (!res.id) throw new Error('Excelファイルが見つかりません。OneDriveのフォルダ名・ファイル名を確認してください。');
-  return res.id;
+  // ① まず直接パスで試す
+  try {
+    const p1 = encodeURIComponent(FOLDER);
+    const p2 = encodeURIComponent(FILE_NAME);
+    const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${p1}/${p2}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.id) return data.id;
+    }
+  } catch {}
+
+  // ② パスで見つからない場合、ファイル名で検索
+  const q = encodeURIComponent(FILE_NAME);
+  const searchUrl = `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${q}')`;
+  const searchRes = await apiCall(token, searchUrl, 'GET');
+  const items = (searchRes.value || []).filter(i => i.name === FILE_NAME);
+  if (items.length === 0) {
+    throw new Error(`ファイル「${FILE_NAME}」がOneDriveで見つかりません。`);
+  }
+  // 複数見つかった場合はフォルダ名が一致するものを優先
+  const matched = items.find(i => i.parentReference?.name === FOLDER) || items[0];
+  return matched.id;
 }
 
 // アイテムIDベースのworkbook URL（エンコード問題を完全回避）
