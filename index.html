@@ -368,11 +368,27 @@
       <div class="section-label">計画作成・変更・更新・モニタリング</div>
       <div class="check-list">
 
-        <!-- 1. 新規計画作成 -->
+        <!-- 1. 引き継ぎ・契約 -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-handover">
+            <span class="check-label">引き継ぎ・契約</span>
+          </label>
+        </div>
+
+        <!-- 2. アセスメント -->
+        <div class="check-wrap">
+          <label class="check-row">
+            <input type="checkbox" id="chk-assessment">
+            <span class="check-label">アセスメント・計画(案)作成</span>
+          </label>
+        </div>
+
+        <!-- 3. 新規計画作成 -->
         <div class="check-wrap">
           <label class="check-row">
             <input type="checkbox" id="chk-newplan" onchange="toggleCond('cond-newplan', this)">
-            <span class="check-label">新規でサービス等利用計画を作成した</span>
+            <span class="check-label">新規(本)計画作成</span>
           </label>
           <div class="cond" id="cond-newplan">
             <div class="cond-radio-list">
@@ -388,7 +404,7 @@
           </div>
         </div>
 
-        <!-- 2. 変更・更新 -->
+        <!-- 4. 変更・更新 -->
         <div class="check-wrap">
           <label class="check-row">
             <input type="checkbox" id="chk-update">
@@ -396,7 +412,7 @@
           </label>
         </div>
 
-        <!-- 3. モニタリング -->
+        <!-- 5. モニタリング -->
         <div class="check-wrap">
           <label class="check-row">
             <input type="checkbox" id="chk-monitoring" onchange="toggleCond('cond-monitoring', this)">
@@ -579,6 +595,12 @@
       <button class="btn btn-primary" onclick="submitForm()">日報を送信</button>
     </div>
 
+    <!-- 管理者用修正ボタン（列順序変更後に一度だけ実行） -->
+    <div class="card" id="admin-fix-card" style="background:#fff8e1;border:1px solid #f0c040;">
+      <p style="font-size:0.8rem;color:#666;margin-bottom:8px;">⚠️ 管理者用：Excelの列順序を新形式に修正します。<strong>一度だけ実行してください。</strong></p>
+      <button id="btn-fix-excel" class="btn" style="background:#f0c040;color:#333;font-size:0.85rem;" onclick="fixExcelColumns()">Excel列を修正する（一度だけ実行）</button>
+    </div>
+
   </div>
 </div>
 
@@ -662,137 +684,19 @@ function toggleCond(condId, cb) {
   }
 }
 
-async function submitForm() {
-  hideFormError();
-
-  const counselor = v('f-counselor');
-  const date      = v('f-date');
-  const client    = v('f-client');
-  const adultChild = document.querySelector('input[name="adult-child"]:checked')?.value || '';
-
-  if (!counselor)  { showFormError('相談員名を入力してください'); return; }
-  if (!date)       { showFormError('実施日を選択してください');   return; }
-  if (!client)     { showFormError('利用者名を入力してください'); return; }
-  if (!adultChild) { showFormError('成人または児童を選択してください'); return; }
-
-  // 各項目の値取得
-  const newplanChecked   = document.getElementById('chk-newplan').checked;
-  const newplanSub       = newplanChecked ? (document.querySelector('input[name="newplan-sub"]:checked')?.value || '') : '';
-  const updateChecked    = document.getElementById('chk-update').checked ? 'あり' : '';
-  const monitoringChecked = document.getElementById('chk-monitoring').checked;
-  const monitoringSub    = monitoringChecked ? (document.querySelector('input[name="monitoring-sub"]:checked')?.value || '') : '';
-  const contactChecked   = document.getElementById('chk-contact').checked;
-  const contactSub       = contactChecked ? (document.querySelector('input[name="contact-sub"]:checked')?.value || '') : '';
-  const statusChecked    = document.getElementById('chk-status').checked;
-  const statusNote       = statusChecked ? v('f-status-note') : '';
-  const dischargeChecked = document.getElementById('chk-discharge').checked ? 'あり' : '';
-  const agencyChecked    = document.getElementById('chk-agency').checked;
-  const agencySub        = agencyChecked ? (document.querySelector('input[name="agency-sub"]:checked')?.value || '') : '';
-  const hospitalChecked  = document.getElementById('chk-hospital').checked;
-  const hospitalSub      = hospitalChecked ? (document.querySelector('input[name="hospital-sub"]:checked')?.value || '') : '';
-  const careChecked      = document.getElementById('chk-care').checked;
-  const careSub          = careChecked ? (document.querySelector('input[name="care-sub"]:checked')?.value || '') : '';
-  const employmentChecked = document.getElementById('chk-employment').checked;
-  const employmentSub    = employmentChecked ? (document.querySelector('input[name="employment-sub"]:checked')?.value || '') : '';
-  const remarks          = v('f-remarks');
-
-  // いずれかの支援内容が選択されているか確認
-  const anyChecked = newplanChecked || updateChecked || monitoringChecked ||
-                     contactChecked || statusChecked || dischargeChecked ||
-                     agencyChecked || hospitalChecked || careChecked || employmentChecked;
-  if (!anyChecked) {
-    showFormError('支援内容を1つ以上選択してください'); return;
-  }
-
-  setLoading(true);
-
-  try {
-    const token = await getToken();
-    const { nextRow, recordId } = await getNextRowAndId(token);
-
-    const now = new Date();
-    const registeredAt = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
-
-    const values = [[
-      recordId,
-      counselor,
-      date,
-      client,
-      adultChild,
-      newplanSub,
-      updateChecked,
-      monitoringSub,
-      contactSub,
-      statusNote,
-      dischargeChecked,
-      agencySub,
-      hospitalSub,
-      careSub,
-      employmentSub,
-      remarks,
-      registeredAt
-    ]];
-
-    await addRow(token, values, nextRow);
-    setLoading(false);
-
-    window._lastCounselor = counselor;
-    window._lastDate      = date;
-    document.getElementById('success-record-id').textContent = `記録ID: ${recordId}`;
-    showPage('page-success');
-
-  } catch (err) {
-    setLoading(false);
-    showFormError(err.message || '送信に失敗しました。もう一度お試しください。');
-  }
-}
-
 const SHEET_NAME = '日報';
 
-function workbookUrl(suffix) {
-  const p1 = encodeURIComponent(FOLDER);
-  const p2 = encodeURIComponent(FILE_NAME);
-  return `https://graph.microsoft.com/v1.0/me/drive/root:/${p1}/${p2}:/workbook${suffix}`;
-}
-
-async function getNextRowAndId(token) {
-  // 使用中のセル範囲を取得して次の空行を探す
-  const sheetEnc = encodeURIComponent(SHEET_NAME);
-  try {
-    const res = await gFetch(token, workbookUrl(`/worksheets/${sheetEnc}/usedRange`), 'GET');
-    const rowCount = res.rowCount || 1;
-    const vals = res.values || [];
-    // 最大記録IDを取得（1行目はヘッダーなのでスキップ）
-    let maxId = 0;
-    for (let i = 1; i < vals.length; i++) {
-      const id = parseInt(vals[i][0], 10);
-      if (!isNaN(id) && id > maxId) maxId = id;
-    }
-    return { nextRow: rowCount + 1, recordId: maxId + 1 };
-  } catch {
-    // シートが空の場合は2行目から（1行目はヘッダー）
-    return { nextRow: 2, recordId: 1 };
-  }
-}
-
-async function addRow(token, values, nextRow) {
-  const sheetEnc = encodeURIComponent(SHEET_NAME);
-  const cols = values[0].length;
-  // 列番号をA〜Qに変換（最大17列）
-  const endCol = String.fromCharCode(64 + cols);
-  const address = `A${nextRow}:${endCol}${nextRow}`;
-  await gFetch(token, workbookUrl(`/worksheets/${sheetEnc}/range(address='${address}')`), 'PATCH', { values });
-}
-
-async function gFetch(token, url, method, body) {
-  const opts = {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
+// ============================================================
+// Graph API 共通呼び出し
+// ============================================================
+async function apiCall(token, url, method, body, sessionId) {
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
   };
-  if (body) opts.body = JSON.stringify(body);
+  if (sessionId) headers['workbook-session-id'] = sessionId;
+  const opts = { method, headers };
+  if (body != null) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
   if (!res.ok) {
     let msg = `APIエラー (${res.status})`;
@@ -801,6 +705,221 @@ async function gFetch(token, url, method, body) {
   }
   if (res.status === 204) return {};
   return res.json();
+}
+
+// ファイルのドライブアイテムIDを取得（★などの特殊文字に対応）
+async function getFileItemId(token) {
+  const p1 = encodeURIComponent(FOLDER);
+  const p2 = encodeURIComponent(FILE_NAME);
+  const url = `https://graph.microsoft.com/v1.0/me/drive/root:/${p1}/${p2}`;
+  const res = await apiCall(token, url, 'GET');
+  if (!res.id) throw new Error('Excelファイルが見つかりません。OneDriveのフォルダ名・ファイル名を確認してください。');
+  return res.id;
+}
+
+// アイテムIDベースのworkbook URL（エンコード問題を完全回避）
+function wbUrl(fileId, suffix) {
+  return `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook${suffix}`;
+}
+
+// セッション作成
+async function createSession(token, fileId) {
+  const res = await apiCall(token, wbUrl(fileId, '/createSession'), 'POST', { persistChanges: true });
+  return res.id;
+}
+
+// セッション終了
+async function closeSession(token, fileId, sessionId) {
+  try { await apiCall(token, wbUrl(fileId, '/closeSession'), 'POST', {}, sessionId); } catch {}
+}
+
+// 次の行番号と記録IDを取得
+async function getNextRowAndId(token, fileId, sessionId) {
+  const sheetEnc = encodeURIComponent(SHEET_NAME);
+  try {
+    const res = await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/usedRange(valuesOnly=true)`), 'GET', null, sessionId);
+    const rowCount = res.rowCount || 1;
+    const vals = res.values || [];
+    let maxId = 0;
+    for (let i = 1; i < vals.length; i++) {
+      const id = parseInt(vals[i][0], 10);
+      if (!isNaN(id) && id > maxId) maxId = id;
+    }
+    return { nextRow: rowCount + 1, recordId: maxId + 1 };
+  } catch {
+    // シートにヘッダーのみ or 空の場合
+    return { nextRow: 2, recordId: 1 };
+  }
+}
+
+// 指定行にデータを書き込む
+async function writeRow(token, fileId, values, nextRow, sessionId) {
+  const sheetEnc = encodeURIComponent(SHEET_NAME);
+  const cols = values[0].length;
+  const endCol = String.fromCharCode(64 + cols); // 17列 → Q
+  const address = `A${nextRow}:${endCol}${nextRow}`;
+  await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/range(address='${address}')`), 'PATCH', { values }, sessionId);
+}
+
+// ============================================================
+// フォーム送信
+// ============================================================
+async function submitForm() {
+  hideFormError();
+
+  const counselor  = v('f-counselor');
+  const date       = v('f-date');
+  const client     = v('f-client');
+  const adultChild = document.querySelector('input[name="adult-child"]:checked')?.value || '';
+
+  if (!counselor)  { showFormError('相談員名を入力してください'); return; }
+  if (!date)       { showFormError('実施日を選択してください');   return; }
+  if (!client)     { showFormError('利用者名を入力してください'); return; }
+  if (!adultChild) { showFormError('成人または児童を選択してください'); return; }
+
+  const newplanChecked    = document.getElementById('chk-newplan').checked;
+  const newplanSub        = newplanChecked    ? (document.querySelector('input[name="newplan-sub"]:checked')?.value    || '') : '';
+  const updateChecked      = document.getElementById('chk-update').checked      ? 'あり' : '';
+  const assessmentChecked  = document.getElementById('chk-assessment').checked  ? 'あり' : '';
+  const monitoringChecked  = document.getElementById('chk-monitoring').checked;
+  const monitoringSub     = monitoringChecked ? (document.querySelector('input[name="monitoring-sub"]:checked')?.value  || '') : '';
+  const contactChecked    = document.getElementById('chk-contact').checked;
+  const contactSub        = contactChecked    ? (document.querySelector('input[name="contact-sub"]:checked')?.value     || '') : '';
+  const statusChecked     = document.getElementById('chk-status').checked;
+  const statusNote        = statusChecked     ? v('f-status-note') : '';
+  const dischargeChecked  = document.getElementById('chk-discharge').checked  ? 'あり' : '';
+  const agencyChecked     = document.getElementById('chk-agency').checked;
+  const agencySub         = agencyChecked     ? (document.querySelector('input[name="agency-sub"]:checked')?.value      || '') : '';
+  const hospitalChecked   = document.getElementById('chk-hospital').checked;
+  const hospitalSub       = hospitalChecked   ? (document.querySelector('input[name="hospital-sub"]:checked')?.value    || '') : '';
+  const careChecked       = document.getElementById('chk-care').checked;
+  const careSub           = careChecked       ? (document.querySelector('input[name="care-sub"]:checked')?.value        || '') : '';
+  const employmentChecked = document.getElementById('chk-employment').checked;
+  const employmentSub     = employmentChecked ? (document.querySelector('input[name="employment-sub"]:checked')?.value  || '') : '';
+  const handoverChecked   = document.getElementById('chk-handover').checked ? 'あり' : '';
+  const remarks           = v('f-remarks');
+
+  const anyChecked = newplanChecked || updateChecked || assessmentChecked || monitoringChecked ||
+                     contactChecked || statusChecked || dischargeChecked ||
+                     agencyChecked  || hospitalChecked || careChecked || employmentChecked || handoverChecked;
+  if (!anyChecked) { showFormError('支援内容を1つ以上選択してください'); return; }
+
+  setLoading(true);
+
+  let fileId   = null;
+  let sessionId = null;
+  let recordId  = null;
+
+  try {
+    const token = await getToken();
+
+    // ① ファイルIDを取得
+    fileId = await getFileItemId(token);
+
+    // ② セッション開始
+    sessionId = await createSession(token, fileId);
+
+    // ③ 次の行と記録IDを取得
+    const { nextRow, recordId: rid } = await getNextRowAndId(token, fileId, sessionId);
+    recordId = rid;
+
+    // ④ 登録日時
+    const now = new Date();
+    const registeredAt = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+    // ⑤ データ配列（19列 A-S）
+    // F=引き継ぎ・契約, G=アセスメント, H=新規(本)計画, I=計画変更・更新, J=モニタリング
+    // K=相談支援, L=様子確認, M=退院退所, N=関係機関, O=入院, P=介護保険, Q=就職
+    // R=備考, S=登録日時
+    const values = [[
+      recordId, counselor, date, client, adultChild,
+      handoverChecked, assessmentChecked, newplanSub, updateChecked, monitoringSub,
+      contactSub, statusNote, dischargeChecked,
+      agencySub, hospitalSub, careSub, employmentSub,
+      remarks, registeredAt
+    ]];
+
+    // ⑥ Excel書き込み
+    await writeRow(token, fileId, values, nextRow, sessionId);
+
+    // ⑦ セッション終了
+    await closeSession(token, fileId, sessionId);
+
+    setLoading(false);
+    window._lastCounselor = counselor;
+    window._lastDate      = date;
+    document.getElementById('success-record-id').textContent = `記録ID: ${recordId}`;
+    showPage('page-success');
+
+  } catch (err) {
+    // エラー時もセッションを閉じる
+    if (fileId && sessionId) await closeSession(await getToken().catch(() => null), fileId, sessionId);
+    setLoading(false);
+    showFormError(err.message || '送信に失敗しました。もう一度お試しください。');
+  }
+}
+
+
+// ============================================================
+// 管理者用：Excel列順序修正（一度だけ実行）
+// ============================================================
+async function fixExcelColumns() {
+  if (!confirm('Excelの列順序を新しい形式に修正します。\n既存のデータが並び替えられます。\n実行してよいですか？')) return;
+  const btn = document.getElementById('btn-fix-excel');
+  if (btn) { btn.disabled = true; btn.textContent = '修正中...'; }
+  try {
+    const token = await getToken();
+    const fileId = await getFileItemId(token);
+    const sessionId = await createSession(token, fileId);
+    try {
+      const sheetEnc = encodeURIComponent(SHEET_NAME);
+      // 全データ読み込み
+      const res = await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/usedRange(valuesOnly=true)`), 'GET', null, sessionId);
+      const rows = res.values || [];
+      if (rows.length === 0) { alert('データがありません'); return; }
+
+      // 新ヘッダー
+      const newHeader = [
+        '記録ID','相談員名','実施日','利用者名','成人/児童',
+        '引き継ぎ・契約','アセスメント・計画(案)作成','新規(本)計画作成','計画変更・更新','モニタリング',
+        '相談支援','様子確認','退院退所','関係機関','入院','介護保険','就職',
+        '備考','登録日時'
+      ];
+
+      // 旧→新 列変換（0-indexed）
+      // 旧: A(0)B(1)C(2)D(3)E(4) F=assessment(5) G=newplan(6) H=update(7) I=monitoring(8)
+      //     J=contact(9) K=status(10) L=discharge(11) M=agency(12) N=hospital(13)
+      //     O=care(14) P=employment(15) Q=handover(16) R=remarks(17) S=registeredAt(18)
+      // 新: A-E同じ, F=handover(旧Q=16), G=assessment(旧F=5), H=newplan(旧G=6),
+      //     I=update(旧H=7), J=monitoring(旧I=8), K-Q=旧J-P(9-15), R=remarks(旧R=17), S=registeredAt(旧S=18)
+      const transformRow = (old) => {
+        while (old.length < 19) old.push('');
+        return [
+          old[0], old[1], old[2], old[3], old[4],
+          old[16], old[5], old[6], old[7], old[8],
+          old[9], old[10], old[11], old[12], old[13], old[14], old[15],
+          old[17], old[18]
+        ];
+      };
+
+      const newRows = [newHeader];
+      for (let i = 1; i < rows.length; i++) newRows.push(transformRow([...rows[i]]));
+
+      // 書き戻し
+      const totalRows = newRows.length;
+      const address = `A1:S${totalRows}`;
+      await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/range(address='${address}')`), 'PATCH', { values: newRows }, sessionId);
+      await closeSession(token, fileId, sessionId);
+      alert(`Excel修正完了！\nヘッダー＋${totalRows - 1}行のデータを新形式に変換しました。`);
+    } catch (err) {
+      await closeSession(token, fileId, sessionId).catch(() => {});
+      throw err;
+    }
+  } catch (err) {
+    alert('エラー: ' + (err.message || '不明なエラー'));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Excel列を修正する（一度だけ実行）'; }
+  }
 }
 
 function continueInput() {
@@ -827,7 +946,7 @@ function resetForm() {
   document.getElementById('f-remarks').value = '';
   document.getElementById('f-status-note').value = '';
   document.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
-  document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = false; });
   document.querySelectorAll('.cond').forEach(el => el.classList.remove('on'));
   hideFormError();
 }
