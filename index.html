@@ -598,7 +598,10 @@
     <!-- 管理者用修正ボタン（列順序変更後に一度だけ実行） -->
     <div class="card" id="admin-fix-card" style="background:#fff8e1;border:1px solid #f0c040;">
       <p style="font-size:0.8rem;color:#666;margin-bottom:8px;">⚠️ 管理者用：Excelの列順序を新形式に修正します。<strong>一度だけ実行してください。</strong></p>
-      <button id="btn-fix-excel" class="btn" style="background:#f0c040;color:#333;font-size:0.85rem;" onclick="fixExcelColumns()">Excel列を修正する（一度だけ実行）</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn" style="background:#e0e0e0;color:#333;font-size:0.8rem;" onclick="checkSheets()">シート名を確認</button>
+        <button id="btn-fix-excel" class="btn" style="background:#f0c040;color:#333;font-size:0.85rem;" onclick="fixExcelColumns()">Excel列を修正する（一度だけ実行）</button>
+      </div>
     </div>
 
   </div>
@@ -861,22 +864,57 @@ async function submitForm() {
 
 
 // ============================================================
+// 管理者用：シート一覧を確認する（診断用）
+// ============================================================
+async function checkSheets() {
+  try {
+    const token = await getToken();
+    const fileId = await getFileItemId(token);
+    const res = await apiCall(token, wbUrl(fileId, '/worksheets'), 'GET');
+    const names = (res.value || []).map(s => s.name).join('\n  ');
+    alert(`Excelファイル内のシート一覧:\n  ${names}\n\n現在の設定シート名: "${SHEET_NAME}"`);
+  } catch (err) {
+    alert('シート確認エラー: ' + (err.message || '不明'));
+  }
+}
+
+// ============================================================
 // 管理者用：Excel列順序修正（一度だけ実行）
 // ============================================================
 async function fixExcelColumns() {
   if (!confirm('Excelの列順序を新しい形式に修正します。\n既存のデータが並び替えられます。\n実行してよいですか？')) return;
   const btn = document.getElementById('btn-fix-excel');
   if (btn) { btn.disabled = true; btn.textContent = '修正中...'; }
+  let step = '開始';
   try {
+    step = 'トークン取得';
     const token = await getToken();
+
+    step = 'ファイルID取得';
     const fileId = await getFileItemId(token);
+
+    step = 'シート一覧取得';
+    const sheetsRes = await apiCall(token, wbUrl(fileId, '/worksheets'), 'GET');
+    const availableSheets = (sheetsRes.value || []).map(s => s.name);
+
+    // SHEET_NAME が見つからない場合は候補を選択
+    let targetSheet = SHEET_NAME;
+    if (!availableSheets.includes(targetSheet)) {
+      const list = availableSheets.join(', ');
+      const chosen = prompt(`シート "${targetSheet}" が見つかりません。\n利用可能なシート:\n${list}\n\n使用するシート名を入力してください:`, availableSheets[0] || '');
+      if (!chosen) { if (btn) { btn.disabled = false; btn.textContent = 'Excel列を修正する（一度だけ実行）'; } return; }
+      targetSheet = chosen.trim();
+    }
+
+    step = 'セッション作成';
     const sessionId = await createSession(token, fileId);
     try {
-      const sheetEnc = encodeURIComponent(SHEET_NAME);
-      // 全データ読み込み
+      const sheetEnc = encodeURIComponent(targetSheet);
+
+      step = 'データ読み込み';
       const res = await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/usedRange(valuesOnly=true)`), 'GET', null, sessionId);
       const rows = res.values || [];
-      if (rows.length === 0) { alert('データがありません'); return; }
+      if (rows.length === 0) { alert('データがありません'); await closeSession(token, fileId, sessionId); return; }
 
       // 新ヘッダー
       const newHeader = [
@@ -887,11 +925,6 @@ async function fixExcelColumns() {
       ];
 
       // 旧→新 列変換（0-indexed）
-      // 旧: A(0)B(1)C(2)D(3)E(4) F=assessment(5) G=newplan(6) H=update(7) I=monitoring(8)
-      //     J=contact(9) K=status(10) L=discharge(11) M=agency(12) N=hospital(13)
-      //     O=care(14) P=employment(15) Q=handover(16) R=remarks(17) S=registeredAt(18)
-      // 新: A-E同じ, F=handover(旧Q=16), G=assessment(旧F=5), H=newplan(旧G=6),
-      //     I=update(旧H=7), J=monitoring(旧I=8), K-Q=旧J-P(9-15), R=remarks(旧R=17), S=registeredAt(旧S=18)
       const transformRow = (old) => {
         while (old.length < 19) old.push('');
         return [
@@ -905,10 +938,12 @@ async function fixExcelColumns() {
       const newRows = [newHeader];
       for (let i = 1; i < rows.length; i++) newRows.push(transformRow([...rows[i]]));
 
-      // 書き戻し
+      step = 'データ書き戻し';
       const totalRows = newRows.length;
       const address = `A1:S${totalRows}`;
       await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/range(address='${address}')`), 'PATCH', { values: newRows }, sessionId);
+
+      step = 'セッション終了';
       await closeSession(token, fileId, sessionId);
       alert(`Excel修正完了！\nヘッダー＋${totalRows - 1}行のデータを新形式に変換しました。`);
     } catch (err) {
@@ -916,7 +951,7 @@ async function fixExcelColumns() {
       throw err;
     }
   } catch (err) {
-    alert('エラー: ' + (err.message || '不明なエラー'));
+    alert(`エラー（${step}）: ` + (err.message || '不明なエラー'));
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Excel列を修正する（一度だけ実行）'; }
   }
