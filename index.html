@@ -805,17 +805,22 @@ async function submitForm() {
   let fileId   = null;
   let sessionId = null;
   let recordId  = null;
+  let step = '開始';
 
   try {
+    step = '①トークン取得';
     const token = await getToken();
 
     // ① ファイルIDを取得
+    step = '②ファイルID取得';
     fileId = await getFileItemId(token);
 
     // ② セッション開始
+    step = '③セッション開始';
     sessionId = await createSession(token, fileId);
 
     // ③ 次の行と記録IDを取得
+    step = '④行番号取得';
     const { nextRow, recordId: rid } = await getNextRowAndId(token, fileId, sessionId);
     recordId = rid;
 
@@ -824,9 +829,6 @@ async function submitForm() {
     const registeredAt = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
     // ⑤ データ配列（19列 A-S）
-    // F=引き継ぎ・契約, G=アセスメント, H=新規(本)計画, I=計画変更・更新, J=モニタリング
-    // K=相談支援, L=様子確認, M=退院退所, N=関係機関, O=入院, P=介護保険, Q=就職
-    // R=備考, S=登録日時
     const values = [[
       recordId, counselor, date, client, adultChild,
       handoverChecked, assessmentChecked, newplanSub, updateChecked, monitoringSub,
@@ -836,9 +838,11 @@ async function submitForm() {
     ]];
 
     // ⑥ Excel書き込み
+    step = `⑤Excel書き込み(${nextRow}行目)`;
     await writeRow(token, fileId, values, nextRow, sessionId);
 
     // ⑦ セッション終了
+    step = '⑥セッション終了';
     await closeSession(token, fileId, sessionId);
 
     setLoading(false);
@@ -851,7 +855,7 @@ async function submitForm() {
     // エラー時もセッションを閉じる
     if (fileId && sessionId) await closeSession(await getToken().catch(() => null), fileId, sessionId);
     setLoading(false);
-    showFormError(err.message || '送信に失敗しました。もう一度お試しください。');
+    showFormError(`[${step}] ` + (err.message || '送信に失敗しました。もう一度お試しください。'));
   }
 }
 
