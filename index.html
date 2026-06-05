@@ -848,11 +848,11 @@ async function getNextRowAndId(token, fileId, sessionId) {
     const m = addr.match(/!?[A-Z]+\d+:[A-Z]+(\d+)$/);
     const lastRow = m ? parseInt(m[1], 10) : ((res.rowCount || 1));
 
-    // maxIdを計算（日付シリアル値などの異常値は除外）
+    // maxIdを計算（旧フォーマット: B列が記録ID, A列は登録日時）
     // 通常の記録IDは1～9999程度。10000以上は日付シリアル値の可能性が高い
     let maxId = 0;
     for (let i = 1; i < vals.length; i++) {
-      const raw = vals[i][0];
+      const raw = vals[i][1]; // B列
       const id = parseInt(raw, 10);
       if (!isNaN(id) && id > 0 && id < 10000 && id > maxId) maxId = id;
     }
@@ -943,13 +943,16 @@ async function submitForm() {
     const now = new Date();
     const registeredAt = `${now.getFullYear()}/${pad(now.getMonth()+1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-    // ⑤ データ配列（19列 A-S）
+    // ⑤ データ配列（19列 A-S）旧フォーマット
+    // A=登録日時, B=記録ID, C=相談員名, D=実施日, E=利用者名, F=成人/児童
+    // G=引き継ぎ・契約, H=アセスメント, I=新規(本)計画, J=計画変更・更新, K=モニタリング
+    // L=相談支援, M=様子確認, N=退院退所, O=関係機関, P=入院, Q=介護保険, R=就職, S=備考
     const values = [[
-      recordId, counselor, date, client, adultChild,
+      registeredAt, recordId, counselor, date, client, adultChild,
       handoverChecked, assessmentChecked, newplanSub, updateChecked, monitoringSub,
       contactSub, statusNote, dischargeChecked,
       agencySub, hospitalSub, careSub, employmentSub,
-      remarks, registeredAt
+      remarks
     ]];
 
     // ⑥ Excel書き込み
