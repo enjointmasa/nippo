@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>日報入力 - 相談支援事業所エンジョイント</title>
   <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
   <style>
@@ -838,14 +841,22 @@ async function getNextRowAndId(token, fileId, sessionId) {
   const sheetEnc = encodeURIComponent(SHEET_NAME);
   try {
     const res = await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/usedRange(valuesOnly=true)`), 'GET', null, sessionId);
-    const rowCount = res.rowCount || 1;
     const vals = res.values || [];
+
+    // addressから実際の最終行を解析（例: "日報!A1:S29" → 29）
+    const addr = res.address || '';
+    const m = addr.match(/!?[A-Z]+\d+:[A-Z]+(\d+)$/);
+    const lastRow = m ? parseInt(m[1], 10) : ((res.rowCount || 1));
+
+    // maxIdを計算（日付シリアル値などの異常値は除外）
+    // 通常の記録IDは1～9999程度。10000以上は日付シリアル値の可能性が高い
     let maxId = 0;
     for (let i = 1; i < vals.length; i++) {
-      const id = parseInt(vals[i][0], 10);
-      if (!isNaN(id) && id > maxId) maxId = id;
+      const raw = vals[i][0];
+      const id = parseInt(raw, 10);
+      if (!isNaN(id) && id > 0 && id < 10000 && id > maxId) maxId = id;
     }
-    return { nextRow: rowCount + 1, recordId: maxId + 1 };
+    return { nextRow: lastRow + 1, recordId: maxId + 1 };
   } catch {
     // シートにヘッダーのみ or 空の場合
     return { nextRow: 2, recordId: 1 };
