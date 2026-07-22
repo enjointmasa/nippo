@@ -338,7 +338,9 @@
 
       <div class="field">
         <label class="field-label" for="f-counselor">相談員名<span class="required">*</span></label>
-        <input type="text" id="f-counselor" placeholder="例：田中 太郎">
+        <select id="f-counselor">
+          <option value="">読み込み中...</option>
+        </select>
       </div>
 
       <div class="field">
@@ -664,6 +666,55 @@ function onLoggedIn(account) {
   if (!document.getElementById('f-date').value) {
     document.getElementById('f-date').value = todayStr();
   }
+  loadCounselors();
+}
+
+// ============================================================
+// 相談員マスタから相談員名リストを取得
+// ============================================================
+const COUNSELOR_SHEET = '相談員マスタ';
+
+async function loadCounselors() {
+  const sel = document.getElementById('f-counselor');
+  if (!sel) return;
+
+  // まずキャッシュから復元
+  try {
+    const cached = JSON.parse(localStorage.getItem('counselors') || '[]');
+    if (cached.length > 0) populateCounselorSelect(cached);
+  } catch {}
+
+  try {
+    const token = await getToken();
+    const base = await findWorkbookBase(token);
+    const sheetEnc = encodeURIComponent(COUNSELOR_SHEET);
+    // A6以降を読む（範囲は広めに取っておく）
+    const res = await apiCall(token, base + `/worksheets/${sheetEnc}/range(address='A6:A200')`, 'GET');
+    const vals = res.values || [];
+    const names = vals
+      .map(row => (row[0] || '').toString().trim())
+      .filter(n => n.length > 0);
+    if (names.length > 0) {
+      try { localStorage.setItem('counselors', JSON.stringify(names)); } catch {}
+      populateCounselorSelect(names);
+    } else if (sel.options.length <= 1) {
+      sel.innerHTML = '<option value="">相談員マスタが空です</option>';
+    }
+  } catch (err) {
+    console.error('相談員取得エラー:', err);
+    if (sel.options.length <= 1) {
+      sel.innerHTML = '<option value="">読み込み失敗（再ログイン推奨）</option>';
+    }
+  }
+}
+
+function populateCounselorSelect(names) {
+  const sel = document.getElementById('f-counselor');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">選択してください</option>' +
+    names.map(n => `<option value="${n}">${n}</option>`).join('');
+  if (prev && names.includes(prev)) sel.value = prev;
 }
 
 async function getToken() {
