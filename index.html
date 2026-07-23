@@ -480,11 +480,11 @@
         <!-- 2. 様子確認 -->
         <div class="check-wrap">
           <label class="check-row">
-            <input type="checkbox" id="chk-status" onchange="toggleCond('cond-status', this)">
+            <input type="checkbox" id="chk-status" onchange="toggleCond('cond-status', this); prefillStatusNote(this)">
             <span class="check-label">福祉サービス事業所に行き本人の様子を確認した</span>
           </label>
           <div class="cond" id="cond-status">
-            <textarea id="f-status-note" placeholder="確認したことや本人の事業所での様子を簡潔に記述"></textarea>
+            <textarea id="f-status-note" rows="6" placeholder="・確認した時間：&#10;・提供されている支援：&#10;・本人の事業所での様子："></textarea>
           </div>
         </div>
 
@@ -726,6 +726,14 @@ async function getToken() {
   } catch {
     const r = await msal_.acquireTokenPopup({ scopes });
     return r.accessToken;
+  }
+}
+
+function prefillStatusNote(cb) {
+  const ta = document.getElementById('f-status-note');
+  if (!ta) return;
+  if (cb.checked && !ta.value.trim()) {
+    ta.value = '・確認した時間：\n・提供されている支援：\n・本人の事業所での様子：';
   }
 }
 
