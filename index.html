@@ -643,7 +643,9 @@ const msalConfig = {
   cache: { cacheLocation: 'sessionStorage' }
 };
 
-const scopes = ['Files.ReadWrite', 'User.Read'];
+// Files.ReadWrite.All = 「自分がアクセスできる全ファイル」
+// 他のスタッフが共有されたExcelに書き込むために必須（Files.ReadWriteだと自分のOneDriveのみ）
+const scopes = ['Files.ReadWrite.All', 'User.Read'];
 const msal_ = new msal.PublicClientApplication(msalConfig);
 
 msal_.handleRedirectPromise()
@@ -875,9 +877,42 @@ async function getNextRowAndId(token, fileId, sessionId) {
 async function writeRow(token, fileId, values, nextRow, sessionId) {
   const sheetEnc = encodeURIComponent(SHEET_NAME);
   const cols = values[0].length;
-  const endCol = String.fromCharCode(64 + cols); // 17列 → Q
+  const endCol = String.fromCharCode(64 + cols); // 19列 → S
   const address = `A${nextRow}:${endCol}${nextRow}`;
   await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/range(address='${address}')`), 'PATCH', { values }, sessionId);
+}
+
+// 空行かどうかを確認（同時書き込みで他の人に取られていないか）
+async function isRowEmpty(token, fileId, row, sessionId) {
+  const sheetEnc = encodeURIComponent(SHEET_NAME);
+  try {
+    const res = await apiCall(token, wbUrl(fileId, `/worksheets/${sheetEnc}/range(address='A${row}:S${row}')`), 'GET', null, sessionId);
+    const vals = (res.values || [[]])[0] || [];
+    return vals.every(v => v === '' || v == null);
+  } catch {
+    return true; // 判定できない場合は書き込みを試す
+  }
+}
+
+// 同時送信に備えて、空行が取れるまで最大5回リトライして書き込む
+async function writeRowSafely(token, fileId, values, startRow, startId, sessionId) {
+  let row = startRow;
+  let id  = startId;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (await isRowEmpty(token, fileId, row, sessionId)) {
+      values[0][1] = id; // B列＝記録IDを最新に合わせる
+      await writeRow(token, fileId, values, row, sessionId);
+      // 書き込み後に検証：自分のデータが入っているか
+      const check = await apiCall(token, wbUrl(fileId, `/worksheets/${encodeURIComponent(SHEET_NAME)}/range(address='B${row}')`), 'GET', null, sessionId);
+      const written = parseInt((check.values || [[]])[0]?.[0], 10);
+      if (written === id) return { row, recordId: id };
+    }
+    // 行が埋まっていた → 最新の状態を取り直して再試行
+    const next = await getNextRowAndId(token, fileId, sessionId);
+    row = next.nextRow;
+    id  = next.recordId;
+  }
+  throw new Error('他の人が同時に入力中のため書き込めませんでした。少し待ってからもう一度お試しください。');
 }
 
 // ============================================================
@@ -963,9 +998,10 @@ async function submitForm() {
       remarks
     ]];
 
-    // ⑥ Excel書き込み
+    // ⑥ Excel書き込み（同時送信対策：空行が取れるまでリトライ）
     step = `⑤Excel書き込み(${nextRow}行目)`;
-    await writeRow(token, fileId, values, nextRow, sessionId);
+    const written = await writeRowSafely(token, fileId, values, nextRow, recordId, sessionId);
+    recordId = written.recordId;
 
     // ⑦ セッション終了
     step = '⑥セッション終了';
